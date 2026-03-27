@@ -1,6 +1,8 @@
-<p align="center">
+<p>
   *FORMERLY*
-  <img src="doc/logo.png" alt="spank logo" width="200">
+  <p>
+   <img src="doc/logo.png" alt="spank logo" width="200">
+  </p>
 </p>
 
 # BadApple 
