@@ -1,5 +1,6 @@
+
 ### ~SPANK~ 
-# 😈🍎 **BadApple** 🍎👏
+# 😈🍎 **Bad Apple** 🍎👏
 
 ## 🚧🚧🚧🚧🚧🚧 🚧🚧 🚧🚧🚧🚧🚧🚧 🚧🚧🚧🚧 🚧🚧🚧🚧 🚧🚧🚧🚧🚧
 ## 🚜 🚧⚠️🚧🧱🔧👷‍♀️🔩 UNDER-CONSTRUCTION 🪚👷‍♀️🧰🧱🚧⚠️🚧 🏗️
@@ -9,13 +10,13 @@
 
 ## THIS IS A FORK OF 'TAIGRR/SPANK' THAT IS ACTIVELY BEING DEVELOPED IN NATIVE SWIFT/OBJECTIVE-C
 
-## COMING SOON!
+# COMING SOON!
 
 ---
 
----
-
----
+⚠️🚨‼️ The following is the original repo's README from [@taigrr]'s repo [https://github.com/spank] ‼️🚨⚠️
+```markdown
+[!NOTE] The following is the original repo's README from [@taigrr]'s repo [https://github.com/spank]:
 
 # spank
 
@@ -250,3 +251,4 @@ MIT
 
 <!-- Links -->
 [readme-zh-link]: ./README-zh.md
+```
