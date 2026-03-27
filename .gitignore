@@ -1,7 +1,6 @@
-/spank
 dist/
 *.log
-.crush
-spank.test
-result
-.vscode/
+add_headers.sh
+AGENTS.md
+docs/go-security-hardening/*
+docs/swift-migration/*

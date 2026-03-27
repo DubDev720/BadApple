@@ -4,234 +4,118 @@
 
 # spank
 
-**English** | [简体中文][readme-zh-link]
+[Main README][readme-en-link]
 
 Slap your MacBook, it yells back.
 
-> "this is the most amazing thing i've ever seen" — [@kenwheeler](https://x.com/kenwheeler)
-
-> "I just ran sexy mode with my wife sitting next to me...We died laughing" — [@duncanthedev](https://x.com/duncanthedev)
-
-> "peak engineering" — [@tylertaewook](https://x.com/tylertaewook)
-
-Uses the Apple Silicon accelerometer (Bosch BMI286 IMU via IOKit HID) to detect physical hits on your laptop and plays audio responses. Single binary, no dependencies.
+Uses the Apple Silicon accelerometer (Bosch BMI286 IMU via IOKit HID) to detect physical hits on your laptop and plays audio responses. The current architecture is split into `spankd`, `spank-sensor-helper`, and `badapple`.
 
 ## Requirements
 
-- macOS on Apple Silicon (any M-series chip M2 or greater, or the M1 Pro SKU specifically, no other M1/A-series chips!)
-- `sudo` (for IOKit HID accelerometer access)
+- macOS on Apple Silicon (M2+)
 - Go 1.26+ (if building from source)
 
-## Install
+## Build
 
-Download from the [latest release](https://github.com/taigrr/spank/releases/latest).
-
-Or build from source:
+Build from the current checkout:
 
 ```bash
-go install github.com/taigrr/spank@latest
+go build -tags embed_media -o spankd ./cmd/spankd
+go build -o spank-sensor-helper ./cmd/spank-sensor-helper
+go build -o badapple ./cmd/badapple
 ```
-
-> **Note:** `go install` places the binary in `$GOBIN` (if set) or `$(go env GOPATH)/bin` (which defaults to `~/go/bin`). Copy it to a system path so `sudo spank` works. For example, with the default Go settings:
->
-> ```bash
-> sudo cp "$(go env GOPATH)/bin/spank" /usr/local/bin/spank
-> ```
 
 ## Usage
 
+Run the daemon and helper against a writable runtime directory:
+
 ```bash
-# Normal mode — says "ow!" when slapped
-sudo spank
-
-# Sexy mode — escalating responses based on slap frequency
-sudo spank --sexy
-
-# Halo mode — plays Halo death sounds when slapped
-sudo spank --halo
-
-# Fast mode — faster polling and shorter cooldown
-sudo spank --fast
-sudo spank --sexy --fast
-
-# Custom mode — plays your own MP3 files from a directory
-sudo spank --custom /path/to/mp3s
-
-# Adjust sensitivity with amplitude threshold (lower = more sensitive)
-sudo spank --min-amplitude 0.1   # more sensitive
-sudo spank --min-amplitude 0.25  # less sensitive
-sudo spank --sexy --min-amplitude 0.2
-
-# Set cooldown period in millisecond (default: 750)
-sudo spank --cooldown 600
-
-# Set playback speed multiplier (default: 1.0)
-sudo spank --speed 0.7   # slower and deeper
-sudo spank --speed 1.5   # faster
-sudo spank --sexy --speed 0.6
+runtime_dir="$HOME/Library/Application Support/spank/run"
+mkdir -p "$runtime_dir"
+./spankd -runtime-dir "$runtime_dir"
+./spank-sensor-helper -runtime-dir "$runtime_dir"
+./badapple -runtime-dir "$runtime_dir" -command status
 ```
 
 ### Modes
 
-**Pain mode** (default): Randomly plays from 10 pain/protest audio clips when a slap is detected.
+The runtime model now separates source and strategy:
 
-**Sexy mode** (`--sexy`): Tracks slaps within a rolling 5-minute window. The more you slap, the more intense the audio response. 60 levels of escalation.
+- Sources: `sexy`, `chaos`, `custom`, and optional runtime pack names
+- Strategies: `random`, `escalation`
+- `sexy` supports both `random` and `escalation`
+- `chaos` supports `random`
+- optional `custom` support is embedded at build time only
+- optional runtime packs support `random` and `escalation` in developer builds
 
-**Halo mode** (`--halo`): Randomly plays from death sound effects from the Halo video game series when a slap is detected.
+Use `badapple` to query status and change runtime settings such as source, strategy, cooldown, threshold, speed, and volume scaling.
 
-**Custom mode** (`--custom`): Randomly plays MP3 files from a custom directory you specify.
+Examples:
 
-### Detection tuning
+```bash
+badapple status
+badapple mode sexy escalation
+badapple mode chaos
+badapple sensitivity high
+badapple sensitivity 0.26
+badapple set -cooldown 500 -speed 1.1
+badapple pack list
+badapple pause
+badapple resume
+badapple restart
+```
 
-Use `--fast` for a more responsive profile with faster polling (4ms vs 10ms), shorter cooldown (350ms vs 750ms), higher sensitivity (0.18 vs 0.05 threshold), and larger sample batch (320 vs 200).
+Sensitivity presets map to:
 
-You can still override individual values with `--min-amplitude` and `--cooldown` when needed.
+- `high` = `0.23`
+- `medium` = `0.28`
+- `low` = `0.33`
 
-### Sensitivity
+Custom pack workflow:
 
-Control detection sensitivity with `--min-amplitude` (default: `0.05`):
+```bash
+./scripts/install_custom_pack.sh ~/Downloads/my-pack
+sudo SPANK_BUILD_TAGS='embed_media embed_custom_media' ./scripts/dev_reinstall.sh
+badapple mode custom escalation
+```
 
-- Lower values (e.g., 0.05-0.10): Very sensitive, detects light taps
-- Medium values (e.g., 0.15-0.30): Balanced sensitivity
-- Higher values (e.g., 0.30-0.50): Only strong impacts trigger sounds
+Runtime pack workflow for development:
 
-The value represents the minimum acceleration amplitude (in g-force) required to trigger a sound.
+```bash
+sudo SPANK_BUILD_TAGS='embed_media runtime_media_packs' ./scripts/dev_reinstall.sh
+badapple pack install afterglow ~/Downloads/afterglow-audio
+badapple restart
+badapple mode afterglow escalation
+```
+
+Both embedded custom packs and developer runtime packs are normalized into the same canonical format before they are accepted:
+
+- accepted import formats: `.wav`, `.mp3`, `.m4a`, `.aac`, `.aif`, `.aiff`, `.caf`
+- installed format: `48000 Hz`, `16-bit PCM`, `2-channel WAV`
+- max clip duration: `10 seconds`
+- pack install/build validation rejects anything outside that profile
 
 ## Running as a Service
 
-To have spank start automatically at boot, create a launchd plist. Pick your mode:
+The repository includes launchd agent templates in `launchd/com.spank.spankd.plist.template` and `launchd/com.spank.spank-sensor-helper.plist.template`, plus an installer script at `scripts/install_launchd_services.sh`.
 
-<details>
-<summary>Pain mode (default)</summary>
+On the target Apple Silicon MacBook, the working deployment model is a pair of per-user LaunchAgents bootstrapped into the logged-in GUI session. The earlier `_spank` system-LaunchDaemon model can enumerate the HID services but fails `IOHIDDeviceOpen` with `kIOReturnNotPermitted`, so it is no longer the default deployment path.
 
-```bash
-sudo tee /Library/LaunchDaemons/com.taigrr.spank.plist > /dev/null << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.taigrr.spank</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/spank</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/spank.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/spank.err</string>
-</dict>
-</plist>
-EOF
-```
+## How It Works
 
-</details>
-
-<details>
-<summary>Sexy mode</summary>
-
-```bash
-sudo tee /Library/LaunchDaemons/com.taigrr.spank.plist > /dev/null << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.taigrr.spank</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/spank</string>
-        <string>--sexy</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/spank.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/spank.err</string>
-</dict>
-</plist>
-EOF
-```
-
-</details>
-
-<details>
-<summary>Halo mode</summary>
-
-```bash
-sudo tee /Library/LaunchDaemons/com.taigrr.spank.plist > /dev/null << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.taigrr.spank</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/spank</string>
-        <string>--halo</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/spank.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/spank.err</string>
-</dict>
-</plist>
-EOF
-```
-
-</details>
-
-> **Note:** Update the path to `spank` if you installed it elsewhere (e.g. `~/go/bin/spank`).
-
-Load and start the service:
-
-```bash
-sudo launchctl load /Library/LaunchDaemons/com.taigrr.spank.plist
-```
-
-Since the plist lives in `/Library/LaunchDaemons` and no `UserName` key is set, launchd runs it as root — no `sudo` needed.
-
-To stop or unload:
-
-```bash
-sudo launchctl unload /Library/LaunchDaemons/com.taigrr.spank.plist
-```
-
-## How it works
-
-1. Reads raw accelerometer data directly via IOKit HID (Apple SPU sensor)
-2. Runs vibration detection (STA/LTA, CUSUM, kurtosis, peak/MAD)
-3. When a significant impact is detected, plays an embedded MP3 response
-4. **Optional volume scaling** (`--volume-scaling`) — light taps play quietly, hard slaps play at full volume
-5. **Optional speed control** (`--speed`) — adjusts playback speed and pitch (0.5 = half speed, 2.0 = double speed)
-6. 750ms cooldown between responses to prevent rapid-fire, adjustable with `--cooldown`
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=taigrr/spank&type=date&legend=top-left)](https://www.star-history.com/#taigrr/spank&type=date&legend=top-left)
+1. `spank-sensor-helper` reads raw accelerometer data directly from Apple Silicon sensor interfaces.
+2. `spankd` receives sanitized slap events over a local Unix socket.
+3. `spankd` applies threshold, cooldown, source, and strategy policy.
+4. `spankd` plays an embedded WAV response through the internal AVFoundation-backed audio layer.
+5. `badapple` queries status and updates runtime settings over the control socket.
 
 ## Credits
 
-Sensor reading and vibration detection ported from [olvvier/apple-silicon-accelerometer](https://github.com/olvvier/apple-silicon-accelerometer).
+Sensor reading and vibration detection are based on the Apple Silicon accelerometer integration used by this codebase.
 
 ## License
 
 MIT
 
 <!-- Links -->
-[readme-zh-link]: ./README-zh.md
+[readme-en-link]: ./README.md

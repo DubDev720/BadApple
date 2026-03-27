@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.spank.spankd</string>
+  <key>LimitLoadToSessionType</key>
+  <array>
+    <string>Aqua</string>
+  </array>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BIN_DIR__/spankd</string>
+    <string>-runtime-dir</string>
+    <string>__RUNTIME_DIR__</string>
+    <string>-config</string>
+    <string>__APP_SUPPORT_DIR__/config.json</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/spankd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/spankd.log</string>
+</dict>
+</plist>
