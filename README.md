@@ -2,6 +2,22 @@
   <img src="doc/logo.png" alt="spank logo" width="200">
 </p>
 
+# BadApple 
+
+# ! UNDER-CONSTRUCTION !
+
+## PLEASE RETURN IN 24-48 HOURS FOR UPDATES
+
+## THIS IS A FORK OF 'TAIGRR/SPANK' THAT IS ACTIVELY BEING DEVELOPED IN NATIVE SWIFT/OBJECTIVE-C
+
+## COMING SOON!
+
+---
+
+---
+
+---
+
 # spank
 
 **English** | [简体中文][readme-zh-link]
