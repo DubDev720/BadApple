@@ -1,4 +1,5 @@
 <p align="center">
+  *FORMERLY*
   <img src="doc/logo.png" alt="spank logo" width="200">
 </p>
 
