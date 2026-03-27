@@ -16,8 +16,6 @@
 
 ⚠️🚨‼️ The following is the original repo's README from [@taigrr]'s repo [https://github.com/spank] ‼️🚨⚠️
 ```markdown
-[!NOTE] The following is the original repo's README from [@taigrr]'s repo [https://github.com/spank]:
-
 # spank
 
 **English** | [简体中文][readme-zh-link]
