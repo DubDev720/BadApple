@@ -14,6 +14,7 @@
     <string>__BIN_DIR__/spank-sensor-helper</string>
     <string>-runtime-dir</string>
     <string>__RUNTIME_DIR__</string>
+__HELPER_NATIVE_DETECTOR_ARG__
   </array>
   <key>RunAtLoad</key>
   <true/>

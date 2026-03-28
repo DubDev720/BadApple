@@ -4,118 +4,257 @@
 
 # spank
 
-[Main README][readme-en-link]
-
 Slap your MacBook, it yells back.
 
-Uses the Apple Silicon accelerometer (Bosch BMI286 IMU via IOKit HID) to detect physical hits on your laptop and plays audio responses. The current architecture is split into `spankd`, `spank-sensor-helper`, and `badapple`.
+`spank` is a macOS utility for Apple Silicon MacBooks that watches the built-in motion sensor, detects chassis impacts, and plays back voice or sound effects in response. The current codebase is a native Swift and Objective-C runtime: the live stack is split into a daemon, a sensor helper, and a control client, with strict media validation and per-user launchd deployment.
+
+This codebase is intended as the mainline modern implementation. It is currently best treated as an alpha/testing release.
+
+## Origin And Credit
+
+This project started from [taigrr/spank](https://github.com/taigrr/spank), which popularized the “slap your MacBook, it yells back” idea and shipped the original implementation.
+
+The sensor path itself traces back further to [olvvier/apple-silicon-accelerometer](https://github.com/olvvier/apple-silicon-accelerometer), the Python implementation by `olvvier` that documented and exposed the Apple Silicon laptop IMU path through IOKit HID. That work is the more important technical precursor here: it identified and operationalized the undocumented `AppleSPUHIDDevice` / SPU sensor route that made projects like `spank` possible in the first place.
+
+This repository keeps that lineage explicit:
+
+- original product/project inspiration: [taigrr/spank](https://github.com/taigrr/spank)
+- original Python IMU implementation and SPU/HID discovery work: `olvvier` / [apple-silicon-accelerometer](https://github.com/olvvier/apple-silicon-accelerometer)
+
+## What This Version Is
+
+This version is not the old single-root, single-binary utility.
+
+It has been refactored into a native-heavy runtime with:
+
+- `spankd`: the main daemon
+- `spank-sensor-helper`: the narrow sensor relay
+- `badapple`: the local control client
+- `bruiseberry/`: the internal Apple-platform toolkit namespace that now holds the Swift and Objective-C runtime implementation
+
+The installed runtime path is native, and this repository now ships only that native implementation.
 
 ## Requirements
 
-- macOS on Apple Silicon (M2+)
-- Go 1.26+ (if building from source)
+- macOS on an Apple Silicon MacBook with the internal motion sensor path available
+- a logged-in GUI session for the default LaunchAgent deployment model
+- Xcode Command Line Tools
 
-## Build
+Notes:
 
-Build from the current checkout:
+- this project depends on an undocumented Apple sensor path and may break on future macOS or hardware revisions
+- this is laptop-specific behavior; it is not a general motion framework for all Apple hardware
+
+## How It Works
+
+At runtime, the system is split into three local components:
+
+1. `spank-sensor-helper` reads the Apple Silicon sensor stream and emits structured slap events.
+2. `spankd` receives those events over local Unix sockets, applies threshold, cooldown, source, and strategy policy, and selects validated audio clips.
+3. `spankd` hands playback to `audio-helper`, while `badapple` talks to the daemon over the control socket for status and configuration changes.
+
+The current sensor pipeline uses Apple HID and IOKit behavior consistent with the undocumented SPU device path described by the upstream IMU work. This is not a public Apple motion API.
+
+## Audio Model
+
+Production builds are embedded-media oriented and use canonical WAV assets rather than runtime MP3 decoding.
+
+Current media behavior:
+
+- built-in source: `sexy`
+- special source: `chaos`
+- optional build-time embedded source: `custom`
+- optional developer-only runtime packs in a dedicated build mode
+
+Supported strategies:
+
+- `random`
+- `escalation`
+
+Current valid source/strategy pairs:
+
+- `sexy` -> `random` or `escalation`
+- `chaos` -> `random`
+- `custom` -> `random` or `escalation` when compiled in
+- runtime pack names -> `random` or `escalation` in developer builds with runtime packs enabled
+
+All imported or embedded audio is normalized and validated against the same canonical profile:
+
+- `48000 Hz`
+- `16-bit PCM`
+- `2-channel WAV`
+- maximum clip duration: `10 seconds`
+
+## Installation
+
+### Quick Install From A Checkout
+
+The current install path is the developer/alpha installer:
 
 ```bash
-go build -tags embed_media -o spankd ./cmd/spankd
-go build -o spank-sensor-helper ./cmd/spank-sensor-helper
-go build -o badapple ./cmd/badapple
+sudo ./scripts/dev_reinstall.sh
+```
+
+That script builds the native binaries, stages validated assets into your app-support directory, installs per-user LaunchAgents, and starts:
+
+- `com.spank.spankd`
+- `com.spank.spank-sensor-helper`
+
+Installed locations:
+
+- daemon: `~/Library/Application Support/spank/bin/spankd`
+- sensor helper: `~/Library/Application Support/spank/bin/spank-sensor-helper`
+- control client: `~/Library/Application Support/spank/bin/badapple`
+- runtime dir: `~/Library/Application Support/spank/run`
+- config: `~/Library/Application Support/spank/config.json`
+- logs: `~/Library/Logs/spank/`
+
+If `badapple` is not already on your shell `PATH`, add:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Build From Source
+
+Build the native stack from a checkout:
+
+```bash
+zsh ./scripts/build_packtool_swift.sh
+zsh ./scripts/build_audio_helper.sh
+zsh ./scripts/build_sensor_stream.sh
+zsh ./scripts/build_sensor_detector.sh
+zsh ./scripts/build_spank_sensor_helper_native.sh
+zsh ./scripts/build_spankd_native.sh
+zsh ./scripts/build_badapple_native.sh
+```
+
+To validate the full native stack from source:
+
+```bash
+zsh ./scripts/validate_native_stack.sh
 ```
 
 ## Usage
 
-Run the daemon and helper against a writable runtime directory:
-
-```bash
-runtime_dir="$HOME/Library/Application Support/spank/run"
-mkdir -p "$runtime_dir"
-./spankd -runtime-dir "$runtime_dir"
-./spank-sensor-helper -runtime-dir "$runtime_dir"
-./badapple -runtime-dir "$runtime_dir" -command status
-```
-
-### Modes
-
-The runtime model now separates source and strategy:
-
-- Sources: `sexy`, `chaos`, `custom`, and optional runtime pack names
-- Strategies: `random`, `escalation`
-- `sexy` supports both `random` and `escalation`
-- `chaos` supports `random`
-- optional `custom` support is embedded at build time only
-- optional runtime packs support `random` and `escalation` in developer builds
-
-Use `badapple` to query status and change runtime settings such as source, strategy, cooldown, threshold, speed, and volume scaling.
-
-Examples:
+Show the current status:
 
 ```bash
 badapple status
+```
+
+Change source and strategy:
+
+```bash
+badapple mode sexy random
 badapple mode sexy escalation
 badapple mode chaos
+```
+
+Change sensitivity:
+
+```bash
 badapple sensitivity high
+badapple sensitivity medium
+badapple sensitivity low
 badapple sensitivity 0.26
-badapple set -cooldown 500 -speed 1.1
-badapple pack list
+```
+
+Current sensitivity presets:
+
+- `high` -> `0.23`
+- `medium` -> `0.28`
+- `low` -> `0.33`
+
+Pause and resume reactions without unloading services:
+
+```bash
 badapple pause
 badapple resume
+```
+
+Manage services:
+
+```bash
+badapple start
+badapple stop
 badapple restart
 ```
 
-Sensitivity presets map to:
+See command help:
 
-- `high` = `0.23`
-- `medium` = `0.28`
-- `low` = `0.33`
+```bash
+badapple help
+```
 
-Custom pack workflow:
+## Custom Packs
+
+### Embedded Custom Pack
+
+To compile in a custom pack at build time:
 
 ```bash
 ./scripts/install_custom_pack.sh ~/Downloads/my-pack
-sudo SPANK_BUILD_TAGS='embed_media embed_custom_media' ./scripts/dev_reinstall.sh
+sudo SPANK_BUILD_FEATURES='embed_media embed_custom_media' ./scripts/dev_reinstall.sh
 badapple mode custom escalation
 ```
 
-Runtime pack workflow for development:
+### Developer Runtime Packs
+
+Developer builds can enable runtime pack installation:
 
 ```bash
-sudo SPANK_BUILD_TAGS='embed_media runtime_media_packs' ./scripts/dev_reinstall.sh
+sudo SPANK_BUILD_FEATURES='embed_media runtime_media_packs' ./scripts/dev_reinstall.sh
 badapple pack install afterglow ~/Downloads/afterglow-audio
 badapple restart
-badapple mode afterglow escalation
+badapple mode afterglow random
 ```
 
-Both embedded custom packs and developer runtime packs are normalized into the same canonical format before they are accepted:
+Runtime packs are normalized and validated before they are accepted. Arbitrary raw media is not played directly.
 
-- accepted import formats: `.wav`, `.mp3`, `.m4a`, `.aac`, `.aif`, `.aiff`, `.caf`
-- installed format: `48000 Hz`, `16-bit PCM`, `2-channel WAV`
-- max clip duration: `10 seconds`
-- pack install/build validation rejects anything outside that profile
+Accepted import formats:
 
-## Running as a Service
+- `.wav`
+- `.mp3`
+- `.m4a`
+- `.aac`
+- `.aif`
+- `.aiff`
+- `.caf`
 
-The repository includes launchd agent templates in `launchd/com.spank.spankd.plist.template` and `launchd/com.spank.spank-sensor-helper.plist.template`, plus an installer script at `scripts/install_launchd_services.sh`.
+## Repository Layout
 
-On the target Apple Silicon MacBook, the working deployment model is a pair of per-user LaunchAgents bootstrapped into the logged-in GUI session. The earlier `_spank` system-LaunchDaemon model can enumerate the HID services but fails `IOHIDDeviceOpen` with `kIOReturnNotPermitted`, so it is no longer the default deployment path.
+This repository now separates two concerns:
 
-## How It Works
+- product/runtime names: `spankd`, `spank-sensor-helper`, `badapple`
+- internal toolkit namespace: `bruiseberry`
 
-1. `spank-sensor-helper` reads raw accelerometer data directly from Apple Silicon sensor interfaces.
-2. `spankd` receives sanitized slap events over a local Unix socket.
-3. `spankd` applies threshold, cooldown, source, and strategy policy.
-4. `spankd` plays an embedded WAV response through the internal AVFoundation-backed audio layer.
-5. `badapple` queries status and updates runtime settings over the control socket.
+`bruiseberry` is the internal Apple-platform toolkit layer that contains the shared native models, daemon, helper, control client, sensor stream, detector, and media tooling.
 
-## Credits
+Repository-owned media assets live under `assets/`.
 
-Sensor reading and vibration detection are based on the Apple Silicon accelerometer integration used by this codebase.
+## Operational Model
+
+The default deployment is a pair of per-user LaunchAgents in the logged-in GUI session, not a broad root daemon.
+
+Why:
+
+- it matches the working sensor-access model on supported hardware
+- it avoids a broad always-root runtime
+- it keeps audio, control handling, and media validation in the unprivileged user context
+
+This project intentionally does not treat the sensor path as a public Apple API integration. It uses a narrow, isolated implementation around an undocumented Apple Silicon SPU/HID route.
+
+## Relevant Limitations
+
+- only supported on appropriate Apple Silicon MacBook hardware
+- not intended for Intel Macs
+- may fail on unsupported M-series models or future hardware revisions
+- depends on undocumented Apple internals for IMU access
+- currently documented and shipped as an alpha/testing release
 
 ## License
 
-MIT
+This repository is licensed under the GNU Affero General Public License v3.0.
 
-<!-- Links -->
-[readme-en-link]: ./README.md
+See [LICENSE](./LICENSE).

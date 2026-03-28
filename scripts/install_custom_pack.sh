@@ -10,20 +10,20 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
 source_dir="$1"
-custom_dir="${repo_root}/internal/media/assets/custom"
+custom_dir="${repo_root}/assets/custom"
+native_packtool="${repo_root}/bruiseberry/bin/packtool-swift"
 
 if [[ ! -d "${source_dir}" ]]; then
   echo "Custom pack source directory not found: ${source_dir}" >&2
   exit 1
 fi
 
-env GOCACHE=/tmp/spank-go-build-cache GOSUMDB=off GOFLAGS=-mod=mod \
-  go run ./cmd/packtool normalize-dir -source-dir "${source_dir}" -output-dir "${custom_dir}"
+./scripts/build_packtool_swift.sh
+"${native_packtool}" normalize-dir -source-dir "${source_dir}" -output-dir "${custom_dir}"
 
-env GOCACHE=/tmp/spank-go-build-cache GOSUMDB=off GOFLAGS=-mod=mod \
-  go run -tags "embed_media embed_custom_media" ./cmd/packtool validate-embedded
+"${native_packtool}" validate-embedded --repo-root "${repo_root}" --include-custom
 
 count=$(find "${custom_dir}" -maxdepth 1 -name '*.wav' | wc -l | tr -d ' ')
 echo "Installed ${count} canonical custom clips into ${custom_dir}"
 echo "Next step:"
-echo "  sudo SPANK_BUILD_TAGS='embed_media embed_custom_media' ./scripts/dev_reinstall.sh"
+echo "  sudo SPANK_BUILD_FEATURES='embed_media embed_custom_media' ./scripts/dev_reinstall.sh"

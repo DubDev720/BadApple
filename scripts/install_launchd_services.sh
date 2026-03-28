@@ -22,29 +22,65 @@ log_dir="${home_dir}/Library/Logs/spank"
 bin_dir="${app_support_dir}/bin"
 local_bin_dir="${home_dir}/.local/bin"
 launch_agents_dir="${home_dir}/Library/LaunchAgents"
-build_tags="${SPANK_BUILD_TAGS:-embed_media}"
+build_features="${SPANK_BUILD_FEATURES:-${SPANK_BUILD_TAGS:-embed_media}}"
+native_packtool="${repo_root}/bruiseberry/bin/packtool-swift"
+native_spankd="${repo_root}/bruiseberry/bin/spankd"
+native_badapple="${repo_root}/bruiseberry/bin/badapple"
+native_audio_helper="${repo_root}/bruiseberry/bin/audio-helper"
+native_sensor_stream="${repo_root}/bruiseberry/bin/sensor-stream"
+native_sensor_detector="${repo_root}/bruiseberry/bin/sensor-detector"
+native_sensor_helper="${repo_root}/bruiseberry/bin/spank-sensor-helper"
+assets_dir="${app_support_dir}/assets"
+helper_native_detector_arg=""
+if [[ "${SPANK_HELPER_NATIVE_DETECTOR:-1}" == "1" ]]; then
+  helper_native_detector_arg='    <string>-native-detector</string>'
+fi
 
-/usr/bin/install -d -m 0755 "${app_support_dir}" "${runtime_dir}" "${log_dir}" "${bin_dir}" "${local_bin_dir}" "${launch_agents_dir}"
+/usr/bin/install -d -m 0755 "${app_support_dir}" "${runtime_dir}" "${log_dir}" "${bin_dir}" "${local_bin_dir}" "${launch_agents_dir}" "${assets_dir}"
 if [[ "${EUID}" -eq 0 ]]; then
   /usr/sbin/chown -R "${target_user}:staff" "${app_support_dir}" "${log_dir}" "${local_bin_dir}" "${launch_agents_dir}"
 fi
 
-if [[ " ${build_tags} " == *" embed_media "* ]]; then
-  env HOME="${home_dir}" GOCACHE=/tmp/spank-go-build-cache GOSUMDB=off GOFLAGS=-mod=mod \
-    go run -tags "${build_tags}" ./cmd/packtool validate-embedded
+if [[ " ${build_features} " == *" embed_media "* ]]; then
+  zsh ./scripts/build_packtool_swift.sh
+  validate_args=(validate-embedded --repo-root "${repo_root}")
+  if [[ " ${build_features} " == *" embed_custom_media "* ]]; then
+    validate_args+=(--include-custom)
+  fi
+  "${native_packtool}" "${validate_args[@]}"
 fi
 
-env GOCACHE=/tmp/spank-go-build-cache GOSUMDB=off GOFLAGS=-mod=mod go build -tags "${build_tags}" -o /tmp/spankd ./cmd/spankd
-env GOCACHE=/tmp/spank-go-build-cache GOSUMDB=off GOFLAGS=-mod=mod go build -o /tmp/spank-sensor-helper ./cmd/spank-sensor-helper
-env GOCACHE=/tmp/spank-go-build-cache GOSUMDB=off GOFLAGS=-mod=mod go build -o /tmp/badapple ./cmd/badapple
+zsh ./scripts/build_spankd_native.sh
+zsh ./scripts/build_badapple_native.sh
+zsh ./scripts/build_audio_helper.sh
+zsh ./scripts/build_sensor_stream.sh
+zsh ./scripts/build_sensor_detector.sh
+zsh ./scripts/build_spank_sensor_helper_native.sh
 
-/usr/bin/install -m 0755 /tmp/spankd "${bin_dir}/spankd"
-/usr/bin/install -m 0755 /tmp/spank-sensor-helper "${bin_dir}/spank-sensor-helper"
-/usr/bin/install -m 0755 /tmp/badapple "${bin_dir}/badapple"
+/bin/rm -rf "${assets_dir}"
+/usr/bin/install -d -m 0755 "${assets_dir}" "${assets_dir}/sexy"
+/bin/cp -R "${repo_root}/assets/sexy/." "${assets_dir}/sexy/"
+if [[ " ${build_features} " == *" embed_custom_media "* ]] && [[ -d "${repo_root}/assets/custom" ]]; then
+  /usr/bin/install -d -m 0755 "${assets_dir}/custom"
+  /bin/cp -R "${repo_root}/assets/custom/." "${assets_dir}/custom/"
+fi
+"${native_packtool}" validate-dir -dir "${assets_dir}/sexy"
+if [[ -d "${assets_dir}/custom" ]]; then
+  "${native_packtool}" validate-dir -dir "${assets_dir}/custom"
+fi
+
+/usr/bin/install -m 0755 "${native_spankd}" "${bin_dir}/spankd"
+/usr/bin/install -m 0755 "${native_sensor_helper}" "${bin_dir}/spank-sensor-helper"
+/usr/bin/install -m 0755 "${native_badapple}" "${bin_dir}/badapple"
+/usr/bin/install -m 0755 "${native_packtool}" "${bin_dir}/packtool-swift"
+/usr/bin/install -m 0755 "${native_audio_helper}" "${bin_dir}/audio-helper"
+/usr/bin/install -m 0755 "${native_sensor_stream}" "${bin_dir}/sensor-stream"
+/usr/bin/install -m 0755 "${native_sensor_detector}" "${bin_dir}/sensor-detector"
 /bin/rm -f "${bin_dir}/spankctl" "${local_bin_dir}/spankctl"
 /bin/ln -sf "${bin_dir}/badapple" "${local_bin_dir}/badapple"
 if [[ "${EUID}" -eq 0 ]]; then
-  /usr/sbin/chown "${target_user}:staff" "${bin_dir}/spankd" "${bin_dir}/spank-sensor-helper" "${bin_dir}/badapple" "${local_bin_dir}/badapple"
+  /usr/sbin/chown -R "${target_user}:staff" "${assets_dir}"
+  /usr/sbin/chown "${target_user}:staff" "${bin_dir}/spankd" "${bin_dir}/spank-sensor-helper" "${bin_dir}/badapple" "${bin_dir}/packtool-swift" "${bin_dir}/audio-helper" "${bin_dir}/sensor-stream" "${bin_dir}/sensor-detector" "${local_bin_dir}/badapple"
 fi
 
 /usr/bin/install -m 0644 /dev/null "${log_dir}/spankd.log"
@@ -58,7 +94,9 @@ export SPANK_APP_SUPPORT_DIR="${app_support_dir}"
 export SPANK_RUNTIME_DIR="${runtime_dir}"
 export SPANK_LOG_DIR="${log_dir}"
 export SPANK_BIN_DIR="${bin_dir}"
+export SPANK_ASSETS_DIR="${assets_dir}"
 export SPANK_LAUNCH_AGENTS_DIR="${launch_agents_dir}"
+export SPANK_HELPER_NATIVE_DETECTOR_ARG="${helper_native_detector_arg}"
 
 python3 - <<'PY'
 from pathlib import Path
@@ -69,6 +107,7 @@ app_support_dir = Path(os.environ["SPANK_APP_SUPPORT_DIR"])
 runtime_dir = Path(os.environ["SPANK_RUNTIME_DIR"])
 log_dir = Path(os.environ["SPANK_LOG_DIR"])
 bin_dir = Path(os.environ["SPANK_BIN_DIR"])
+assets_dir = Path(os.environ["SPANK_ASSETS_DIR"])
 launch_agents_dir = Path(os.environ["SPANK_LAUNCH_AGENTS_DIR"])
 
 replacements = {
@@ -76,6 +115,8 @@ replacements = {
     "__RUNTIME_DIR__": str(runtime_dir),
     "__LOG_DIR__": str(log_dir),
     "__BIN_DIR__": str(bin_dir),
+    "__ASSETS_DIR__": str(assets_dir),
+    "__HELPER_NATIVE_DETECTOR_ARG__": os.environ.get("SPANK_HELPER_NATIVE_DETECTOR_ARG", ""),
 }
 
 for name in ("com.spank.spankd", "com.spank.spank-sensor-helper"):
@@ -90,10 +131,32 @@ if [[ "${EUID}" -eq 0 ]]; then
     "${launch_agents_dir}/com.spank.spank-sensor-helper.plist"
 fi
 
+bootstrap_with_retry() {
+  local domain="$1"
+  local plist_path="$2"
+  local attempts="${3:-5}"
+  local delay="${4:-1}"
+  local try
+  local output
+
+  for ((try = 1; try <= attempts; try++)); do
+    if output=$(/bin/launchctl bootstrap "${domain}" "${plist_path}" 2>&1); then
+      return 0
+    fi
+    if [[ "${try}" -lt "${attempts}" ]]; then
+      sleep "${delay}"
+      continue
+    fi
+    echo "${output}" >&2
+    return 1
+  done
+}
+
 /bin/launchctl bootout "gui/${target_uid}/com.spank.spank-sensor-helper" >/dev/null 2>&1 || true
 /bin/launchctl bootout "gui/${target_uid}/com.spank.spankd" >/dev/null 2>&1 || true
-/bin/launchctl bootstrap "gui/${target_uid}" "${launch_agents_dir}/com.spank.spankd.plist"
-/bin/launchctl bootstrap "gui/${target_uid}" "${launch_agents_dir}/com.spank.spank-sensor-helper.plist"
+sleep 1
+bootstrap_with_retry "gui/${target_uid}" "${launch_agents_dir}/com.spank.spankd.plist"
+bootstrap_with_retry "gui/${target_uid}" "${launch_agents_dir}/com.spank.spank-sensor-helper.plist"
 /bin/launchctl kickstart -k "gui/${target_uid}/com.spank.spankd"
 /bin/launchctl kickstart -k "gui/${target_uid}/com.spank.spank-sensor-helper"
 
@@ -109,11 +172,12 @@ fi
 echo PATHS
 printf 'target_user=%s\n' "${target_user}"
 printf 'target_uid=%s\n' "${target_uid}"
-printf 'build_tags=%s\n' "${build_tags}"
+printf 'build_features=%s\n' "${build_features}"
 printf 'app_support=%s\n' "${app_support_dir}"
 printf 'runtime=%s\n' "${runtime_dir}"
 printf 'logs=%s\n' "${log_dir}"
 printf 'bin=%s\n' "${bin_dir}"
+printf 'assets=%s\n' "${assets_dir}"
 printf 'cli_link=%s\n' "${local_bin_dir}/badapple"
 echo
 echo RUNTIME

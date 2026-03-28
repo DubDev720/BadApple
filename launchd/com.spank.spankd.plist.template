@@ -16,6 +16,10 @@
     <string>__RUNTIME_DIR__</string>
     <string>-config</string>
     <string>__APP_SUPPORT_DIR__/config.json</string>
+    <string>-assets-dir</string>
+    <string>__ASSETS_DIR__</string>
+    <string>-packs-dir</string>
+    <string>__APP_SUPPORT_DIR__/packs</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
